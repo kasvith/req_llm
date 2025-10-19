@@ -39,6 +39,7 @@ defmodule ReqLLM.Provider.Generated.ValidProviders do
     :moonshotai,
     :moonshotai_cn,
     :morph,
+    :nebius,
     :nvidia,
     :openai,
     :opencode,
@@ -57,7 +58,7 @@ defmodule ReqLLM.Provider.Generated.ValidProviders do
     :zai,
     :zai_coding_plan,
     :zhipuai,
-    :zhipuai_coding_plan
+    ...
   ]
 
   @spec list() :: [atom()]
