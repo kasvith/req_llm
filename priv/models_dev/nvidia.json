@@ -61,6 +61,36 @@
       "tool_call": true
     },
     {
+      "attachment": false,
+      "cost": {
+        "input": 0,
+        "output": 0
+      },
+      "id": "deepseek-ai/deepseek-v3.1-terminus",
+      "knowledge": "2025-01",
+      "last_updated": "2025-09-22",
+      "limit": {
+        "context": 128000,
+        "output": 8192
+      },
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "name": "DeepSeek V3.1 Terminus",
+      "open_weights": false,
+      "provider": "nvidia",
+      "provider_model_id": "deepseek-ai/deepseek-v3.1-terminus",
+      "reasoning": true,
+      "release_date": "2025-09-22",
+      "temperature": true,
+      "tool_call": true
+    },
+    {
       "attachment": true,
       "cost": {
         "input": 0,
@@ -150,6 +180,36 @@
       "provider_model_id": "moonshotai/kimi-k2-instruct",
       "reasoning": true,
       "release_date": "2025-01-01",
+      "temperature": true,
+      "tool_call": true
+    },
+    {
+      "attachment": false,
+      "cost": {
+        "input": 0,
+        "output": 0
+      },
+      "id": "moonshotai/kimi-k2-instruct-0905",
+      "knowledge": "2024-10",
+      "last_updated": "2025-09-05",
+      "limit": {
+        "context": 262144,
+        "output": 262144
+      },
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "name": "Kimi K2 0905",
+      "open_weights": true,
+      "provider": "nvidia",
+      "provider_model_id": "moonshotai/kimi-k2-instruct-0905",
+      "reasoning": false,
+      "release_date": "2025-09-05",
       "temperature": true,
       "tool_call": true
     },
