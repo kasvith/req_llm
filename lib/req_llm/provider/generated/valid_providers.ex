@@ -8,6 +8,7 @@ defmodule ReqLLM.Provider.Generated.ValidProviders do
   Do not edit manually.
   """
   @providers [
+    :aihubmix,
     :alibaba,
     :alibaba_cn,
     :amazon_bedrock,
@@ -39,12 +40,14 @@ defmodule ReqLLM.Provider.Generated.ValidProviders do
     :moonshotai,
     :moonshotai_cn,
     :morph,
+    :nebius,
     :nvidia,
     :openai,
     :opencode,
     :openrouter,
     :perplexity,
     :requesty,
+    :scaleway,
     :submodel,
     :synthetic,
     :togetherai,
@@ -52,12 +55,10 @@ defmodule ReqLLM.Provider.Generated.ValidProviders do
     :v0,
     :venice,
     :vercel,
+    :vultr,
     :wandb,
     :xai,
-    :zai,
-    :zai_coding_plan,
-    :zhipuai,
-    :zhipuai_coding_plan
+    ...
   ]
 
   @spec list() :: [atom()]
