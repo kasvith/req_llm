@@ -230,7 +230,7 @@ defmodule ReqLLM.Generation do
   @spec generate_object(
           String.t() | {atom(), keyword()} | struct(),
           String.t() | list(),
-          keyword(),
+          keyword() | Zoi.Type.t(),
           keyword()
         ) :: {:ok, Response.t()} | {:error, term()}
   def generate_object(model_spec, messages, object_schema, opts \\ []) do
@@ -277,7 +277,7 @@ defmodule ReqLLM.Generation do
   @spec generate_object!(
           String.t() | {atom(), keyword()} | struct(),
           String.t() | list(),
-          keyword(),
+          keyword() | Zoi.Type.t(),
           keyword()
         ) :: map() | no_return()
   def generate_object!(model_spec, messages, object_schema, opts \\ []) do
@@ -335,7 +335,7 @@ defmodule ReqLLM.Generation do
   @spec stream_object(
           String.t() | {atom(), keyword()} | struct(),
           String.t() | list(),
-          keyword(),
+          keyword() | Zoi.Type.t(),
           keyword()
         ) :: {:ok, ReqLLM.StreamResponse.t()} | {:error, term()}
   def stream_object(model_spec, messages, object_schema, opts \\ []) do
@@ -389,7 +389,7 @@ defmodule ReqLLM.Generation do
   @spec stream_object!(
           String.t() | {atom(), keyword()} | struct(),
           String.t() | list(),
-          keyword(),
+          keyword() | Zoi.Type.t(),
           keyword()
         ) :: Enumerable.t() | no_return()
   def stream_object!(_model_spec, _messages, _object_schema, _opts \\ []) do
