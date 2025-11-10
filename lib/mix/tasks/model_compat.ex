@@ -202,6 +202,15 @@ defmodule Mix.Tasks.ReqLlm.ModelCompat do
 
     models
     |> Enum.filter(fn {provider, _} -> MapSet.member?(implemented, provider) end)
+    |> Enum.map(fn {provider, provider_models} ->
+      allowed_models =
+        Enum.filter(provider_models, fn model ->
+          ReqLLM.Catalog.allowed_spec?(provider, model["id"])
+        end)
+
+      {provider, allowed_models}
+    end)
+    |> Enum.reject(fn {_provider, models} -> Enum.empty?(models) end)
     |> Enum.sort_by(fn {provider, _} -> provider end)
     |> Enum.each(fn {provider, provider_models} ->
       Mix.shell().info(
@@ -313,13 +322,28 @@ defmodule Mix.Tasks.ReqLlm.ModelCompat do
     operation = parse_operation_type(opts[:type])
     category = operation_to_category(operation)
 
-    env = [
-      {"REQ_LLM_MODELS", spec},
-      {"REQ_LLM_OPERATION", Atom.to_string(operation)},
-      {"REQ_LLM_FIXTURES_MODE", mode},
-      {"REQ_LLM_DEBUG", "1"},
-      {"REQ_LLM_INCLUDE_RESPONSES", "1"}
-    ]
+    # Propagate AWS credentials from current environment
+    aws_env_vars =
+      for key <- [
+            "AWS_ACCESS_KEY_ID",
+            "AWS_SECRET_ACCESS_KEY",
+            "AWS_SESSION_TOKEN",
+            "AWS_REGION",
+            "AWS_DEFAULT_REGION"
+          ],
+          value = System.get_env(key),
+          not is_nil(value) do
+        {key, value}
+      end
+
+    env =
+      [
+        {"REQ_LLM_MODELS", spec},
+        {"REQ_LLM_OPERATION", Atom.to_string(operation)},
+        {"REQ_LLM_FIXTURES_MODE", mode},
+        {"REQ_LLM_DEBUG", "1"},
+        {"REQ_LLM_INCLUDE_RESPONSES", "1"}
+      ] ++ aws_env_vars
 
     Mix.shell().info("  Testing #{spec} (#{operation})...")
 
@@ -433,7 +457,10 @@ defmodule Mix.Tasks.ReqLlm.ModelCompat do
           provider_name(provider) <> IO.ANSI.reset()
       )
 
-      Enum.each(provider_results, &print_result/1)
+      provider_results
+      |> Enum.sort_by(& &1.model_id)
+      |> Enum.each(&print_result/1)
+
       Mix.shell().info("")
     end)
 
@@ -594,18 +621,18 @@ defmodule Mix.Tasks.ReqLlm.ModelCompat do
   defp model_supports_operation?(registry, provider, model_id, :embedding) do
     case find_model(registry, provider, model_id) do
       nil -> false
-      model -> is_embedding_model?(model)
+      model -> embedding_model?(model)
     end
   end
 
   defp model_supports_operation?(registry, provider, model_id, :text) do
     case find_model(registry, provider, model_id) do
       nil -> false
-      model -> not is_embedding_model?(model)
+      model -> not embedding_model?(model)
     end
   end
 
-  defp is_embedding_model?(model) do
+  defp embedding_model?(model) do
     t = Map.get(model, "type")
     outputs = get_in(model, ["modalities", "output"]) || []
     t == "embedding" or Enum.member?(outputs, "embedding")
@@ -669,7 +696,11 @@ defmodule Mix.Tasks.ReqLlm.ModelCompat do
     registry
     |> Enum.flat_map(fn {provider, models} ->
       if MapSet.member?(implemented, provider) do
-        Enum.map(models, fn m -> {provider, m["id"]} end)
+        models
+        |> Enum.filter(fn m ->
+          ReqLLM.Catalog.allowed_spec?(provider, m["id"])
+        end)
+        |> Enum.map(fn m -> {provider, m["id"]} end)
       else
         []
       end
@@ -678,8 +709,15 @@ defmodule Mix.Tasks.ReqLlm.ModelCompat do
 
   defp pairs_for_provider(registry, provider) do
     case Map.get(registry, provider) do
-      nil -> []
-      models -> Enum.map(models, fn m -> {provider, m["id"]} end)
+      nil ->
+        []
+
+      models ->
+        models
+        |> Enum.filter(fn m ->
+          ReqLLM.Catalog.allowed_spec?(provider, m["id"])
+        end)
+        |> Enum.map(fn m -> {provider, m["id"]} end)
     end
   end
 

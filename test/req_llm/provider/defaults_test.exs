@@ -1,8 +1,12 @@
 defmodule ReqLLM.Provider.DefaultsTest do
   use ExUnit.Case, async: true
 
+  alias ReqLLM.Context
+  alias ReqLLM.Message
+  alias ReqLLM.Message.ContentPart
+  alias ReqLLM.Model
   alias ReqLLM.Provider.Defaults
-  alias ReqLLM.{Context, Message, Message.ContentPart, Model, StreamChunk}
+  alias ReqLLM.StreamChunk
 
   describe "encode_context_to_openai_format/2" do
     test "encodes text content correctly" do
@@ -150,7 +154,7 @@ defmodule ReqLLM.Provider.DefaultsTest do
     end
   end
 
-  describe "default_decode_sse_event/2" do
+  describe "default_decode_stream_event/2" do
     setup do
       %{model: %Model{provider: :openai, model: "gpt-4"}}
     end
@@ -159,7 +163,7 @@ defmodule ReqLLM.Provider.DefaultsTest do
       # Content delta
       content_event = %{data: %{"choices" => [%{"delta" => %{"content" => "Hello"}}]}}
 
-      assert Defaults.default_decode_sse_event(content_event, model) == [
+      assert Defaults.default_decode_stream_event(content_event, model) == [
                %StreamChunk{type: :content, text: "Hello"}
              ]
 
@@ -185,7 +189,7 @@ defmodule ReqLLM.Provider.DefaultsTest do
         }
       }
 
-      [chunk] = Defaults.default_decode_sse_event(tool_event, model)
+      [chunk] = Defaults.default_decode_stream_event(tool_event, model)
       assert chunk.type == :tool_call
       assert chunk.name == "get_weather"
       assert chunk.arguments == %{"city" => "New York"}
@@ -193,9 +197,9 @@ defmodule ReqLLM.Provider.DefaultsTest do
     end
 
     test "handles edge cases gracefully", %{model: model} do
-      assert Defaults.default_decode_sse_event(%{data: %{}}, model) == []
-      assert Defaults.default_decode_sse_event(%{}, model) == []
-      assert Defaults.default_decode_sse_event("invalid", model) == []
+      assert Defaults.default_decode_stream_event(%{data: %{}}, model) == []
+      assert Defaults.default_decode_stream_event(%{}, model) == []
+      assert Defaults.default_decode_stream_event("invalid", model) == []
 
       invalid_json_event = %{
         data: %{
@@ -215,7 +219,7 @@ defmodule ReqLLM.Provider.DefaultsTest do
         }
       }
 
-      [chunk] = Defaults.default_decode_sse_event(invalid_json_event, model)
+      [chunk] = Defaults.default_decode_stream_event(invalid_json_event, model)
       assert chunk.type == :tool_call
       assert chunk.arguments == %{}
     end
@@ -240,7 +244,7 @@ defmodule ReqLLM.Provider.DefaultsTest do
         }
       }
 
-      [chunk] = Defaults.default_decode_sse_event(nil_name_event, model)
+      [chunk] = Defaults.default_decode_stream_event(nil_name_event, model)
       assert chunk.type == :meta
     end
   end
