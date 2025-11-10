@@ -203,7 +203,7 @@ defmodule ReqLLM.Generation do
 
     * `model_spec` - Model specification in various formats
     * `messages` - Text prompt or list of messages
-    * `schema` - Schema definition for structured output (keyword list)
+    * `schema` - Schema definition for structured output (keyword list) or Zoi schema
     * `opts` - Additional options (keyword list)
 
   ## Options
@@ -298,7 +298,7 @@ defmodule ReqLLM.Generation do
 
     * `model_spec` - Model specification in various formats
     * `messages` - Text prompt or list of messages
-    * `schema` - Schema definition for structured output (keyword list)
+    * `schema` - Schema definition for structured output (keyword list) or Zoi schema
     * `opts` - Additional options (keyword list)
 
   ## Options
