@@ -231,6 +231,7 @@
     },
     {
       "attachment": false,
+      "beta": true,
       "cost": {
         "input": 0.6,
         "output": 1.9
