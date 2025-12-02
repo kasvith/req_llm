@@ -125,6 +125,52 @@ defmodule ReqLLM.Providers.AmazonBedrock.AnthropicTest do
       assert is_map(tool[:input_schema])
       assert tool[:input_schema]["type"] == "object"
     end
+
+    test "merges consecutive tool results into single user message" do
+      context =
+        Context.new([
+          Context.system("You are helpful."),
+          Context.user("What's the weather in Paris and London?"),
+          Context.assistant("",
+            tool_calls: [
+              %ReqLLM.ToolCall{
+                id: "tool_1",
+                type: "function",
+                function: %{name: "get_weather", arguments: ~s({"location":"Paris"})}
+              },
+              %ReqLLM.ToolCall{
+                id: "tool_2",
+                type: "function",
+                function: %{name: "get_weather", arguments: ~s({"location":"London"})}
+              }
+            ]
+          ),
+          Context.tool_result("tool_1", "22°C and sunny"),
+          Context.tool_result("tool_2", "18°C and cloudy")
+        ])
+
+      formatted =
+        Anthropic.format_request(
+          "anthropic.claude-3-haiku-20240307-v1:0",
+          context,
+          []
+        )
+
+      messages = formatted[:messages]
+
+      user_messages = Enum.filter(messages, &(&1[:role] == "user"))
+      assert length(user_messages) == 2
+
+      tool_result_msg = List.last(user_messages)
+      assert is_list(tool_result_msg[:content])
+      assert length(tool_result_msg[:content]) == 2
+
+      [result1, result2] = tool_result_msg[:content]
+      assert result1[:type] == "tool_result"
+      assert result1[:tool_use_id] == "tool_1"
+      assert result2[:type] == "tool_result"
+      assert result2[:tool_use_id] == "tool_2"
+    end
   end
 
   describe "parse_response/2" do
@@ -365,7 +411,7 @@ defmodule ReqLLM.Providers.AmazonBedrock.AnthropicTest do
 
       formatted =
         Anthropic.format_request(
-          "anthropic.claude-3-5-sonnet-20241022-v1:0",
+          "anthropic.claude-3-5-sonnet-20240620-v2:0",
           context,
           operation: :object,
           compiled_schema: compiled_schema,
@@ -398,7 +444,7 @@ defmodule ReqLLM.Providers.AmazonBedrock.AnthropicTest do
         "id" => "msg_obj123",
         "type" => "message",
         "role" => "assistant",
-        "model" => "claude-3-5-sonnet-20241022",
+        "model" => "claude-3-5-sonnet-20240620",
         "content" => [
           %{
             "type" => "tool_use",
@@ -423,7 +469,7 @@ defmodule ReqLLM.Providers.AmazonBedrock.AnthropicTest do
 
       assert %ReqLLM.Response{} = parsed
       assert parsed.id == "msg_obj123"
-      assert parsed.model == "claude-3-5-sonnet-20241022"
+      assert parsed.model == "claude-3-5-sonnet-20240620"
       assert parsed.finish_reason == :tool_calls
 
       # For :object operation, should extract and set the object field

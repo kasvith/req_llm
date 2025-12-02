@@ -69,7 +69,10 @@ defmodule ReqLLM.StreamResponse do
 
   use TypedStruct
 
-  alias ReqLLM.{Context, Model, Response, StreamResponse.MetadataHandle}
+  alias ReqLLM.Context
+  alias ReqLLM.Providers.Anthropic.AdapterHelpers
+  alias ReqLLM.Response
+  alias ReqLLM.StreamResponse.MetadataHandle
 
   typedstruct enforce: true do
     @typedoc """
@@ -82,7 +85,7 @@ defmodule ReqLLM.StreamResponse do
     field(:stream, Enumerable.t(), doc: "Lazy stream of StreamChunk structs")
     field(:metadata_handle, MetadataHandle.t(), doc: "Handle collecting usage and finish_reason")
     field(:cancel, (-> :ok), doc: "Function to cancel streaming and cleanup resources")
-    field(:model, Model.t(), doc: "Model specification that generated this response")
+    field(:model, LLMDB.Model.t(), doc: "Model specification that generated this response")
     field(:context, Context.t(), doc: "Conversation context including new messages")
   end
 
@@ -103,7 +106,7 @@ defmodule ReqLLM.StreamResponse do
   ## Examples
 
       {:ok, stream_response} = ReqLLM.stream_text("anthropic:claude-3-sonnet", "Hello!")
-      
+
       stream_response
       |> ReqLLM.StreamResponse.tokens()
       |> Stream.each(&IO.write/1)
@@ -135,7 +138,7 @@ defmodule ReqLLM.StreamResponse do
   ## Examples
 
       {:ok, stream_response} = ReqLLM.stream_text("anthropic:claude-3-sonnet", "Hello!")
-      
+
       text = ReqLLM.StreamResponse.text(stream_response)
       #=> "Hello! How can I help you today?"
 
@@ -168,7 +171,7 @@ defmodule ReqLLM.StreamResponse do
   ## Examples
 
       {:ok, stream_response} = ReqLLM.stream_text("anthropic:claude-3-sonnet", "Call get_time tool")
-      
+
       stream_response
       |> ReqLLM.StreamResponse.tool_calls()
       |> Stream.each(fn tool_call -> IO.inspect(tool_call.name) end)
@@ -198,7 +201,7 @@ defmodule ReqLLM.StreamResponse do
   ## Examples
 
       {:ok, stream_response} = ReqLLM.stream_text("anthropic:claude-3-sonnet", "Call calculator")
-      
+
       tool_calls = ReqLLM.StreamResponse.extract_tool_calls(stream_response)
       #=> [%{id: "call_123", name: "calculator", arguments: %{"operation" => "add", "a" => 2, "b" => 3}}]
 
@@ -453,9 +456,9 @@ defmodule ReqLLM.StreamResponse do
     metadata = MetadataHandle.await(stream_response.metadata_handle)
     usage = normalize_usage_fields(Map.get(metadata, :usage))
 
-    %Response{
+    base_response = %Response{
       id: generate_response_id(),
-      model: stream_response.model.model,
+      model: stream_response.model.id,
       context: stream_response.context,
       message: message,
       object: object,
@@ -466,6 +469,8 @@ defmodule ReqLLM.StreamResponse do
       provider_meta: Map.get(metadata, :provider_meta, %{}),
       error: nil
     }
+
+    Context.merge_response(stream_response.context, base_response)
   end
 
   @doc """
@@ -485,7 +490,7 @@ defmodule ReqLLM.StreamResponse do
   ## Examples
 
       {:ok, stream_response} = ReqLLM.stream_text("anthropic:claude-3-sonnet", "Hello!")
-      
+
       usage = ReqLLM.StreamResponse.usage(stream_response)
       #=> %{input_tokens: 8, output_tokens: 12, total_cost: 0.024}
 
@@ -521,7 +526,7 @@ defmodule ReqLLM.StreamResponse do
   ## Examples
 
       {:ok, stream_response} = ReqLLM.stream_text("anthropic:claude-3-sonnet", "Hello!")
-      
+
       reason = ReqLLM.StreamResponse.finish_reason(stream_response)
       #=> :stop
 
@@ -566,7 +571,7 @@ defmodule ReqLLM.StreamResponse do
 
       {:ok, stream_response} = ReqLLM.stream_text("anthropic:claude-3-sonnet", "Hello!")
       {:ok, response} = ReqLLM.StreamResponse.to_response(stream_response)
-      
+
       # Now compatible with existing Response-based code
       text = ReqLLM.Response.text(response)
       usage = ReqLLM.Response.usage(response)
@@ -599,9 +604,9 @@ defmodule ReqLLM.StreamResponse do
       usage = normalize_usage_fields(Map.get(metadata, :usage))
 
       # Create Response struct
-      response = %Response{
+      base_response = %Response{
         id: generate_response_id(),
-        model: stream_response.model.model,
+        model: stream_response.model.id,
         context: stream_response.context,
         message: message,
         object: object,
@@ -613,7 +618,7 @@ defmodule ReqLLM.StreamResponse do
         error: nil
       }
 
-      {:ok, response}
+      {:ok, Context.merge_response(stream_response.context, base_response)}
     end
   rescue
     error -> {:error, error}
@@ -621,8 +626,8 @@ defmodule ReqLLM.StreamResponse do
     :exit, reason -> {:error, reason}
   end
 
-  defp responses_api_model?(%ReqLLM.Model{} = model) do
-    get_in(model, [Access.key(:_metadata, %{}), "api"]) == "responses"
+  defp responses_api_model?(%LLMDB.Model{} = model) do
+    get_in(model, [Access.key(:extra, %{}), :api]) == "responses"
   end
 
   defp responses_api_model?(_), do: false
@@ -632,11 +637,11 @@ defmodule ReqLLM.StreamResponse do
     body =
       ReqLLM.Providers.OpenAI.ResponsesAPI.build_responses_body_from_chunks(
         chunks,
-        stream_response.model.model
+        stream_response.model.id
       )
 
     # Create fake req/resp to pass through existing decode logic
-    req = %{options: %{model: stream_response.model.model, context: stream_response.context}}
+    req = %{options: %{model: stream_response.model.id, context: stream_response.context}}
     resp = %{status: 200, body: body}
 
     # Reuse Responses API decode logic - guarantees format parity!
@@ -649,7 +654,10 @@ defmodule ReqLLM.StreamResponse do
             finish_reason: Map.get(metadata, :finish_reason, response.finish_reason)
         }
 
-        {:ok, response}
+        # Extract object from structured_output tool call if present
+        response = AdapterHelpers.extract_and_set_object(response)
+
+        {:ok, Context.merge_response(stream_response.context, response)}
 
       {_req, error} when is_exception(error) ->
         {:error, error}
@@ -762,13 +770,23 @@ defmodule ReqLLM.StreamResponse do
   end
 
   defp extract_from_tool_calls(tool_calls) when is_list(tool_calls) do
-    case Enum.find(tool_calls, fn tc -> tc.name == "structured_output" end) do
-      %{arguments: args} when is_map(args) -> args
-      _ -> nil
-    end
+    Enum.find_value(tool_calls, &extract_structured_output_args/1)
   end
 
   defp extract_from_tool_calls(_), do: nil
+
+  defp extract_structured_output_args(%ReqLLM.ToolCall{} = tc) do
+    if ReqLLM.ToolCall.matches_name?(tc, "structured_output") do
+      ReqLLM.ToolCall.args_map(tc)
+    end
+  end
+
+  defp extract_structured_output_args(%{name: "structured_output", arguments: args})
+       when is_map(args) do
+    args
+  end
+
+  defp extract_structured_output_args(_), do: nil
 
   defp extract_from_content(content) do
     case Enum.find(content, fn part -> is_map(part) and part[:type] == :object end) do

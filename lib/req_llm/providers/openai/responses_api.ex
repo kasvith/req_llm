@@ -64,7 +64,7 @@ defmodule ReqLLM.Providers.OpenAI.ResponsesAPI do
   @impl true
   def encode_body(request) do
     context = request.options[:context] || %ReqLLM.Context{messages: []}
-    model_name = request.options[:model]
+    model_name = request.options[:model] || request.options[:id]
     opts = request.options
 
     body = build_request_body(context, model_name, opts, request)
@@ -126,7 +126,7 @@ defmodule ReqLLM.Providers.OpenAI.ResponsesAPI do
 
         usage = normalize_responses_usage(raw_usage, data)
 
-        [ReqLLM.StreamChunk.meta(%{usage: usage, model: model.model})]
+        [ReqLLM.StreamChunk.meta(%{usage: usage, model: model.id})]
 
       "response.output_text.done" ->
         []
@@ -213,7 +213,7 @@ defmodule ReqLLM.Providers.OpenAI.ResponsesAPI do
 
   defp build_request_url(opts) do
     case Keyword.get(opts, :base_url) do
-      nil -> ReqLLM.Providers.OpenAI.default_base_url() <> path()
+      nil -> ReqLLM.Providers.OpenAI.base_url() <> path()
       base_url -> "#{base_url}#{path()}"
     end
   end
@@ -233,10 +233,12 @@ defmodule ReqLLM.Providers.OpenAI.ResponsesAPI do
             {input_acc, [msg | tool_acc]}
 
           _ ->
+            content_type = if msg.role == :assistant, do: "output_text", else: "input_text"
+
             content =
               Enum.flat_map(msg.content, fn part ->
                 case part.type do
-                  :text -> [%{"type" => "input_text", "text" => part.text}]
+                  :text -> [%{"type" => content_type, "text" => part.text}]
                   _ -> []
                 end
               end)
@@ -278,7 +280,7 @@ defmodule ReqLLM.Providers.OpenAI.ResponsesAPI do
     tools = encode_tools_if_any(temp_request) |> ensure_deep_research_tools(temp_request)
 
     tool_choice = encode_tool_choice(opts_map[:tool_choice])
-    reasoning = encode_reasoning_effort(provider_opts[:reasoning_effort])
+    reasoning = encode_reasoning_effort(opts_map[:reasoning_effort])
 
     text_format = encode_text_format(provider_opts[:response_format])
 
@@ -308,20 +310,17 @@ defmodule ReqLLM.Providers.OpenAI.ResponsesAPI do
 
     base_url = ReqLLM.Provider.Options.effective_base_url(ReqLLM.Providers.OpenAI, model, opts)
 
-    provider_opts = opts |> Keyword.get(:provider_options, []) |> Map.new() |> Map.to_list()
-
     cleaned_opts =
       opts
       |> Keyword.delete(:finch_name)
       |> Keyword.delete(:compiled_schema)
-      |> Keyword.delete(:provider_options)
-      |> Keyword.merge(provider_opts)
+      |> Keyword.put(:provider_options, Keyword.get(opts, :provider_options, []))
       |> Keyword.put(:stream, true)
-      |> Keyword.put(:model, model.model)
+      |> Keyword.put(:model, model.id)
       |> Keyword.put(:context, context)
       |> Keyword.put(:base_url, base_url)
 
-    body = build_request_body(context, model.model, cleaned_opts, nil)
+    body = build_request_body(context, model.id, cleaned_opts, nil)
     url = build_request_url(cleaned_opts)
 
     {:ok, Finch.build(:post, url, headers, Jason.encode!(body))}
@@ -476,9 +475,9 @@ defmodule ReqLLM.Providers.OpenAI.ResponsesAPI do
   defp ensure_deep_research_tools(tools, request) do
     model_name = request.options[:model]
 
-    case ReqLLM.Model.from("openai:#{model_name}") do
+    case ReqLLM.model("openai:#{model_name}") do
       {:ok, model} ->
-        category = get_in(model, [Access.key(:_metadata, %{}), "category"])
+        category = get_in(model, [Access.key(:extra, %{}), :category])
 
         case category do
           "deep_research" ->
@@ -527,73 +526,80 @@ defmodule ReqLLM.Providers.OpenAI.ResponsesAPI do
   defp encode_tool_for_responses_api(%ReqLLM.Tool{} = tool) do
     schema = ReqLLM.Tool.to_schema(tool)
     function_def = schema["function"]
-
-    function_def =
-      function_def
-      |> Map.put("strict", true)
-      |> ensure_all_properties_required()
+    params = normalize_parameters_for_strict(function_def["parameters"])
 
     %{
-      "name" => function_def["name"],
       "type" => "function",
-      "function" => function_def
+      "name" => function_def["name"],
+      "description" => function_def["description"],
+      "parameters" => params,
+      "strict" => true
     }
   end
 
   defp encode_tool_for_responses_api(tool_schema) when is_map(tool_schema) do
     function_def = tool_schema["function"] || tool_schema[:function]
 
-    function_def =
-      if is_map_key(tool_schema, "function") do
-        function_def
-        |> Map.put("strict", true)
-        |> ensure_all_properties_required()
-      else
-        function_def
-        |> Map.put(:strict, true)
-        |> ensure_all_properties_required()
-      end
+    if function_def do
+      name = function_def["name"] || function_def[:name]
+      description = function_def["description"] || function_def[:description]
+      raw_params = function_def["parameters"] || function_def[:parameters]
+      params = normalize_parameters_for_strict(raw_params)
 
-    name = function_def["name"] || function_def[:name]
+      %{
+        "type" => "function",
+        "name" => name,
+        "description" => description,
+        "parameters" => params,
+        "strict" => true
+      }
+    else
+      name = tool_schema["name"] || tool_schema[:name]
+      description = tool_schema["description"] || tool_schema[:description]
+      raw_params = tool_schema["parameters"] || tool_schema[:parameters]
+      params = normalize_parameters_for_strict(raw_params)
 
+      %{
+        "type" => "function",
+        "name" => name,
+        "description" => description,
+        "parameters" => params,
+        "strict" => true
+      }
+    end
+  end
+
+  defp normalize_parameters_for_strict(nil) do
     %{
-      "name" => name,
-      "type" => "function",
-      "function" => function_def
+      "type" => "object",
+      "properties" => %{},
+      "required" => [],
+      "additionalProperties" => false
     }
   end
 
-  defp ensure_all_properties_required(function) do
-    params = function[:parameters] || function["parameters"]
+  defp normalize_parameters_for_strict(params) when is_map(params) do
+    properties = params[:properties] || params["properties"] || %{}
 
-    if params do
-      properties = params[:properties] || params["properties"]
+    all_property_names =
+      properties
+      |> Map.keys()
+      |> Enum.map(&to_string/1)
 
-      if properties && is_map(properties) do
-        all_property_names = Map.keys(properties)
+    %{
+      "type" => "object",
+      "properties" => stringify_keys(properties),
+      "required" => all_property_names,
+      "additionalProperties" => false
+    }
+  end
 
-        updated_params =
-          if is_map_key(params, :properties) do
-            params
-            |> Map.put(:required, all_property_names)
-            |> Map.delete(:additionalProperties)
-          else
-            params
-            |> Map.put("required", Enum.map(all_property_names, &to_string/1))
-            |> Map.delete("additionalProperties")
-          end
-
-        if is_map_key(function, :parameters) do
-          Map.put(function, :parameters, updated_params)
-        else
-          Map.put(function, "parameters", updated_params)
-        end
-      else
-        function
-      end
-    else
-      function
-    end
+  defp stringify_keys(map) when is_map(map) do
+    Map.new(map, fn {k, v} ->
+      key = if is_atom(k), do: Atom.to_string(k), else: k
+      value = if is_map(v), do: stringify_keys(v), else: v
+      {key, value}
+    end)
   end
 
   defp encode_tool_choice(nil), do: nil

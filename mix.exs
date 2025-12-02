@@ -117,7 +117,7 @@ defmodule ReqLLM.MixProject do
           ],
           Core: [
             ReqLLM,
-            ReqLLM.Model,
+            ReqLLM.ModelHelpers,
             ReqLLM.Model.Metadata,
             ReqLLM.Metadata,
             ReqLLM.Capability,
@@ -164,10 +164,11 @@ defmodule ReqLLM.MixProject do
       {:ex_aws_auth, "~> 1.3"},
       {:server_sent_events, "~> 0.2"},
       {:splode, "~> 0.2.3"},
-      {:typed_struct, "~> 0.3.0"},
+      {:typedstruct, "~> 0.5"},
       {:uniq, "~> 0.6"},
-      {:zoi, "~> 0.7"},
+      {:zoi, "~> 0.10"},
       {:jsv, "~> 0.11"},
+      {:llm_db, github: "agentjido/llm_db", branch: "main", override: true},
 
       # Dev/test dependencies
       {:bandit, "~> 1.8", only: :dev, runtime: false},
@@ -177,7 +178,8 @@ defmodule ReqLLM.MixProject do
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
       {:quokka, "== 2.11.2", only: [:dev, :test], runtime: false},
       {:excoveralls, "~> 0.18", only: [:dev, :test], runtime: false},
-      {:plug, "~> 1.0", only: [:dev, :test], runtime: false}
+      {:plug, "~> 1.0", only: [:dev, :test], runtime: false},
+      {:git_hooks, "~> 0.8", only: :dev, runtime: false}
     ]
   end
 
@@ -189,7 +191,7 @@ defmodule ReqLLM.MixProject do
       links: %{
         "Changelog" => "https://hexdocs.pm/req_llm/changelog.html",
         "GitHub" => @source_url,
-        "Agent Jido" => "https://agentjido.xyz"
+        "Elixir AI Discord" => "https://agentjido.xyz/discord"
       },
       files:
         ~w(lib priv mix.exs LICENSE README.md CHANGELOG.md CONTRIBUTING.md AGENTS.md usage-rules.md guides .formatter.exs)
@@ -206,7 +208,6 @@ defmodule ReqLLM.MixProject do
       ],
       q: ["quality"],
       docs: ["docs --formatter html"],
-      ms: ["req_llm.model_sync"],
       mc: ["req_llm.model_compat"],
       llm: ["req_llm.gen"]
     ]

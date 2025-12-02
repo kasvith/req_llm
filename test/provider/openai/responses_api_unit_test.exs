@@ -80,8 +80,10 @@ defmodule Provider.OpenAI.ResponsesAPIUnitTest do
 
       assert [encoded_tool] = body["tools"]
       assert encoded_tool["type"] == "function"
-      assert encoded_tool["function"]["name"] == "get_weather"
-      assert encoded_tool["function"]["description"] == "Get weather"
+      assert encoded_tool["name"] == "get_weather"
+      assert encoded_tool["description"] == "Get weather"
+      assert encoded_tool["strict"] == true
+      assert encoded_tool["parameters"]["properties"]["location"]["type"] == "string"
     end
 
     test "omits tools when empty list" do
@@ -141,7 +143,7 @@ defmodule Provider.OpenAI.ResponsesAPIUnitTest do
     end
 
     test "encodes reasoning effort with atom" do
-      request = build_request(provider_options: [reasoning_effort: :medium])
+      request = build_request(reasoning_effort: :medium)
 
       encoded = ResponsesAPI.encode_body(request)
       body = Jason.decode!(encoded.body)
@@ -150,7 +152,7 @@ defmodule Provider.OpenAI.ResponsesAPIUnitTest do
     end
 
     test "encodes reasoning effort with string" do
-      request = build_request(provider_options: [reasoning_effort: "high"])
+      request = build_request(reasoning_effort: "high")
 
       encoded = ResponsesAPI.encode_body(request)
       body = Jason.decode!(encoded.body)
@@ -188,7 +190,7 @@ defmodule Provider.OpenAI.ResponsesAPIUnitTest do
       assert input1["role"] == "user"
       assert input1["content"] == [%{"type" => "input_text", "text" => "Hello"}]
       assert input2["role"] == "assistant"
-      assert input2["content"] == [%{"type" => "input_text", "text" => "Hi there"}]
+      assert input2["content"] == [%{"type" => "output_text", "text" => "Hi there"}]
     end
 
     test "encodes response_format with keyword list schema (converts to JSON schema)" do
@@ -545,7 +547,7 @@ defmodule Provider.OpenAI.ResponsesAPIUnitTest do
 
   describe "decode_stream_event/2" do
     setup do
-      model = %ReqLLM.Model{provider: :openai, model: "gpt-5"}
+      {:ok, model} = ReqLLM.model("openai:gpt-5")
       {:ok, model: model}
     end
 
@@ -676,7 +678,7 @@ defmodule Provider.OpenAI.ResponsesAPIUnitTest do
     provider_opts = Keyword.get(opts, :provider_options, [])
 
     req_opts = %{
-      model: "gpt-5",
+      id: "gpt-5",
       context: context,
       stream: Keyword.get(opts, :stream),
       max_output_tokens: Keyword.get(opts, :max_output_tokens),
@@ -684,6 +686,7 @@ defmodule Provider.OpenAI.ResponsesAPIUnitTest do
       max_tokens: Keyword.get(opts, :max_tokens),
       tools: Keyword.get(opts, :tools),
       tool_choice: Keyword.get(opts, :tool_choice),
+      reasoning_effort: Keyword.get(opts, :reasoning_effort),
       provider_options: provider_opts
     }
 
@@ -704,7 +707,7 @@ defmodule Provider.OpenAI.ResponsesAPIUnitTest do
       url: URI.parse("https://api.openai.com/v1/responses"),
       headers: %{},
       body: {:json, %{}},
-      options: %{model: "gpt-5", context: context}
+      options: %{id: "gpt-5", context: context}
     }
 
     resp = %Req.Response{

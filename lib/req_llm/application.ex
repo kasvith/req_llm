@@ -20,7 +20,8 @@ defmodule ReqLLM.Application do
     children =
       [
         {Finch, finch_config},
-        {Task.Supervisor, name: ReqLLM.TaskSupervisor}
+        {Task.Supervisor, name: ReqLLM.TaskSupervisor},
+        ReqLLM.Providers.GoogleVertex.TokenCache
       ] ++ dev_children()
 
     opts = [strategy: :one_for_one, name: ReqLLM.Supervisor]
@@ -102,25 +103,7 @@ defmodule ReqLLM.Application do
   end
 
   defp initialize_registry do
-    case Application.get_env(:req_llm, :catalog_enabled?, false) do
-      true ->
-        case ReqLLM.Catalog.load() do
-          {:ok, catalog} ->
-            ReqLLM.Provider.Registry.initialize(catalog)
-
-          {:error, reason} ->
-            require Logger
-
-            Logger.warning(
-              "Catalog load failed: #{inspect(reason)}; falling back to provider discovery"
-            )
-
-            ReqLLM.Provider.Registry.initialize()
-        end
-
-      _ ->
-        ReqLLM.Provider.Registry.initialize()
-    end
+    ReqLLM.Providers.initialize()
   end
 
   defp initialize_schema_cache do
@@ -139,7 +122,9 @@ defmodule ReqLLM.Application do
       case Dotenvy.source(env_file) do
         {:ok, env_map} ->
           Enum.each(env_map, fn {key, value} ->
-            System.put_env(key, value)
+            if System.get_env(key) == nil do
+              System.put_env(key, value)
+            end
           end)
 
         {:error, _reason} ->

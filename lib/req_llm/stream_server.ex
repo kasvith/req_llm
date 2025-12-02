@@ -23,7 +23,7 @@ defmodule ReqLLM.StreamServer do
       # Start a streaming session
       {:ok, server} = StreamServer.start_link(
         provider_mod: ReqLLM.Providers.OpenAI,
-        model: %ReqLLM.Model{...}
+        model: %LLMDB.Model{...}
       )
 
       # Attach HTTP task for monitoring
@@ -109,7 +109,7 @@ defmodule ReqLLM.StreamServer do
 
       {:ok, server} = ReqLLM.StreamServer.start_link(
         provider_mod: ReqLLM.Providers.OpenAI,
-        model: %ReqLLM.Model{provider: :openai, name: "gpt-4o"}
+        model: %LLMDB.Model{provider: :openai, name: "gpt-4o"}
       )
 
   """
@@ -223,7 +223,7 @@ defmodule ReqLLM.StreamServer do
         )
 
   """
-  @spec start_http(server(), module(), ReqLLM.Model.t(), ReqLLM.Context.t(), keyword(), atom()) ::
+  @spec start_http(server(), module(), LLMDB.Model.t(), ReqLLM.Context.t(), keyword(), atom()) ::
           {:ok, pid(), any(), any()} | {:error, term()}
   def start_http(server, provider_mod, model, context, opts, finch_name \\ ReqLLM.Finch) do
     GenServer.call(
@@ -649,15 +649,21 @@ defmodule ReqLLM.StreamServer do
         updated_metadata =
           case chunk.type do
             :meta ->
-              usage =
-                Map.get(chunk.metadata || %{}, :usage) || Map.get(chunk.metadata || %{}, "usage")
+              chunk_meta = chunk.metadata || %{}
 
-              if usage do
-                normalized_usage = normalize_streaming_usage(usage, state.model)
-                Map.update(metadata, :usage, normalized_usage, &Map.merge(&1, normalized_usage))
-              else
-                metadata
-              end
+              # Extract usage for normalization
+              usage = Map.get(chunk_meta, :usage) || Map.get(chunk_meta, "usage")
+
+              meta_with_usage =
+                if usage do
+                  normalized_usage = normalize_streaming_usage(usage, state.model)
+                  Map.update(metadata, :usage, normalized_usage, &Map.merge(&1, normalized_usage))
+                else
+                  metadata
+                end
+
+              # Merge remaining metadata (like finish_reason)
+              Map.merge(meta_with_usage, Map.drop(chunk_meta, [:usage, "usage"]))
 
             _ ->
               metadata
@@ -757,6 +763,7 @@ defmodule ReqLLM.StreamServer do
             # Pass iodata directly - reversed because we prepended
             iodata = Enum.reverse(state.raw_iodata)
 
+            # credo:disable-for-next-line Credo.Check.Refactor.Apply
             apply(ReqLLM.Step.Fixture.Backend, :save_streaming_fixture, [
               state.http_context,
               state.fixture_path,
@@ -969,7 +976,7 @@ defmodule ReqLLM.StreamServer do
     end
   end
 
-  defp calculate_cost_if_model_available(usage, %ReqLLM.Model{cost: cost_map})
+  defp calculate_cost_if_model_available(usage, %LLMDB.Model{cost: cost_map})
        when is_map(cost_map) do
     # Calculate cost using the model's cost rates (mirrors ReqLLM.Step.Usage logic)
     input_rate = cost_map[:input] || cost_map["input"]
